@@ -21,6 +21,7 @@ from Base import BaseFolder
 from offlineimap import imaputil
 from offlineimap.ui import UIBase
 from threading import Lock
+from subprocess import Popen, PIPE
 
 try:
     from hashlib import md5
@@ -57,6 +58,7 @@ class MaildirFolder(BaseFolder):
         self.dofsync = config.getdefaultboolean("general", "fsync", True)
         self.root = root
         self.sep = sep
+	self.ui = UIBase.getglobalui()
         self.messagelist = None
         self.repository = repository
         self.accountname = accountname
@@ -236,6 +238,10 @@ class MaildirFolder(BaseFolder):
             os.fsync(file.fileno())
 
         file.close()
+
+        # Label the message
+        self.labelmessage(os.path.join(tmpdir, tmpmessagename))
+
         if rtime != None:
             os.utime(os.path.join(tmpdir,tmpmessagename), (rtime,rtime))
         ui.debug('maildir', 'savemessage: moving from %s to %s' % \
@@ -258,7 +264,24 @@ class MaildirFolder(BaseFolder):
         self.savemessageflags(uid, flags)
         ui.debug('maildir', 'savemessage: returning uid %d' % uid)
         return uid
-        
+
+    def labelmessage(self, message):
+        # TODO: lblmail should be a config option
+        lblmail = 'lblmail'
+
+        if not lblmail:
+            return
+        try:
+            self.ui.callhook("Calling hook: " + lblmail + " " + message)
+            p = Popen(lblmail + " " + message, shell=True,
+                      stdin=PIPE, stdout=PIPE, stderr=PIPE,
+                      close_fds=True)
+            r = p.communicate()
+            self.ui.callhook("Hook stdout: %s\nHook stderr:%s\n" % r)
+            self.ui.callhook("Hook return code: %d" % p.returncode)
+        except:
+            self.ui.warn("Exception occured while calling lblmail")
+
     def getmessageflags(self, uid):
         return self.messagelist[uid]['flags']
 
